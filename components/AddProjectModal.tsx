@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 const COLORS = [
   '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981',
@@ -26,49 +29,41 @@ export default function AddProjectModal({ onClose, onSave }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name.trim(), color }),
     });
-    if (!res.ok) {
-      setError('Failed to create project');
-    } else {
-      onSave();
-      onClose();
-    }
+    if (!res.ok) setError('Failed to create project');
+    else { onSave(); onClose(); }
     setSaving(false);
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
-      <div className="rounded-xl p-6 w-full max-w-sm shadow-2xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">New Project</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">×</button>
-        </div>
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>New Project</DialogTitle>
+        </DialogHeader>
 
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Project name</label>
-            <input
+        <div className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Project name</label>
+            <Input
               autoFocus
-              type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && save()}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && save()}
               placeholder="e.g. Website Redesign"
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)' }}
             />
           </div>
 
-          <div>
-            <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>Color</label>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Color</label>
             <div className="flex gap-2 flex-wrap">
-              {COLORS.map((c) => (
+              {COLORS.map(c => (
                 <button
                   key={c}
                   onClick={() => setColor(c)}
-                  className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                  className="w-7 h-7 rounded-full transition-transform hover:scale-110 focus:outline-none"
                   style={{
                     background: c,
-                    outline: color === c ? `2px solid white` : 'none',
+                    outline: color === c ? `2px solid ${c}` : 'none',
                     outlineOffset: '2px',
                   }}
                 />
@@ -76,23 +71,18 @@ export default function AddProjectModal({ onClose, onSave }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--surface-2)' }}>
+          <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2">
             <div className="w-3 h-3 rounded-full" style={{ background: color }} />
-            <span className="text-sm">{name || 'Project preview'}</span>
+            <span className="text-sm text-foreground">{name || 'Project preview'}</span>
           </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <Button onClick={save} disabled={saving} className="w-full">
+            {saving ? 'Creating…' : 'Create project'}
+          </Button>
         </div>
-
-        {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
-
-        <button
-          onClick={save}
-          disabled={saving}
-          className="mt-4 w-full py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
-          style={{ background: '#7c3aed', color: 'white' }}
-        >
-          {saving ? 'Creating...' : 'Create project'}
-        </button>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

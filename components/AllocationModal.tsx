@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Project, WeekData } from '@/lib/types';
 import { format, parseISO } from 'date-fns';
 
@@ -14,14 +17,15 @@ interface Props {
 }
 
 export default function AllocationModal({ memberId, memberName, week, projects, onClose, onSave }: Props) {
-  const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
-  const [percentage, setPercentage] = useState(20);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-
   const weekLabel = format(parseISO(week.week), 'MMM d, yyyy');
   const leavePct = week.leave_days.length * 20;
-  const remaining = 100 - week.allocated_percentage - leavePct;
+  const holidayPct = week.holiday_days.length * 20;
+  const remaining = 100 - week.allocated_percentage - leavePct - holidayPct;
+
+  const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
+  const [percentage, setPercentage] = useState(() => Math.min(20, Math.floor(remaining / 5) * 5 || 5));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -45,114 +49,118 @@ export default function AllocationModal({ memberId, memberName, week, projects, 
     await fetch('/api/allocations', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ member_id: alloc.member_id, project_id: alloc.project_id, week_start: alloc.week_start }),
+      body: JSON.stringify(alloc),
     });
     onSave();
     onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
-      <div className="rounded-xl p-6 w-full max-w-md shadow-2xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-semibold">{memberName}</h2>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Week of {weekLabel}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">×</button>
-        </div>
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{memberName}</DialogTitle>
+          <p className="text-sm text-muted-foreground">Week of {weekLabel}</p>
+        </DialogHeader>
 
-        {/* Current allocations */}
-        {week.allocations.length > 0 && (
-          <div className="mb-4">
-            <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>CURRENT ALLOCATIONS</p>
-            <div className="space-y-2">
-              {week.allocations.map((a) => (
-                <div key={a.project_id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'var(--surface-2)' }}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ background: a.project_color }} />
-                    <span className="text-sm">{a.project_name}</span>
+        <div className="space-y-4 pt-1">
+          {/* Current allocations */}
+          {week.allocations.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current allocations</p>
+              <div className="space-y-1.5">
+                {week.allocations.map(a => (
+                  <div key={a.project_id} className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: a.project_color }} />
+                      <span className="text-sm font-medium">{a.project_name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold tabular-nums">{a.percentage}%</span>
+                      <button onClick={() => remove(a)} className="text-xs text-destructive hover:underline">Remove</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-mono font-semibold">{a.percentage}%</span>
-                    <button
-                      onClick={() => remove(a)}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {leavePct > 0 && (
-          <div className="mb-4 rounded-lg px-3 py-2 flex items-center gap-2" style={{ background: '#1a1a2e', border: '1px solid #3b3b5e' }}>
-            <span className="text-sm">🌴</span>
-            <span className="text-sm" style={{ color: '#a78bfa' }}>{leavePct}% time off this week</span>
-          </div>
-        )}
-
-        {remaining > 0 ? (
-          <>
-            <div className="mb-4">
-              <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>ADD ALLOCATION</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Project</label>
-                  <select
-                    value={projectId}
-                    onChange={(e) => setProjectId(e.target.value)}
-                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)' }}
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>
-                    Allocation — <span className="font-semibold text-white">{percentage}%</span>
-                    <span className="ml-2" style={{ color: 'var(--text-muted)' }}>(max {remaining}% available)</span>
-                  </label>
-                  <input
-                    type="range"
-                    min={5}
-                    max={remaining}
-                    step={5}
-                    value={percentage}
-                    onChange={(e) => setPercentage(Number(e.target.value))}
-                    className="w-full accent-violet-500"
-                  />
-                  <div className="flex justify-between text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    {[20, 40, 60, 80, 100].filter(v => v <= remaining).map(v => (
-                      <button key={v} onClick={() => setPercentage(v)} className="hover:text-white">{v}%</button>
-                    ))}
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
+          )}
 
-            {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
+          {leavePct > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
+              <span>🌴</span>
+              <span className="text-sm text-violet-700">{leavePct}% personal time off</span>
+            </div>
+          )}
+          {week.holiday_days.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <span>🏛️</span>
+              <div>
+                {week.holiday_days.map(h => (
+                  <p key={h.day} className="text-sm text-amber-800">{h.name}</p>
+                ))}
+              </div>
+            </div>
+          )}
 
-            <button
-              onClick={save}
-              disabled={saving || !projectId}
-              className="w-full py-2 rounded-lg text-sm font-semibold transition-opacity disabled:opacity-50"
-              style={{ background: '#7c3aed', color: 'white' }}
-            >
-              {saving ? 'Saving...' : 'Save allocation'}
-            </button>
-          </>
-        ) : (
-          <p className="text-sm text-center py-2" style={{ color: 'var(--text-muted)' }}>
-            No capacity remaining this week.
-          </p>
-        )}
-      </div>
-    </div>
+          {remaining > 0 ? (
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Add allocation</p>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Project</label>
+                <Select value={projectId} onValueChange={v => v && setProjectId(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
+                          {p.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-medium">Allocation</label>
+                  <span className="text-sm font-semibold tabular-nums text-primary">{percentage}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={5} max={remaining} step={5}
+                  value={percentage}
+                  onChange={e => setPercentage(Number(e.target.value))}
+                  className="w-full accent-violet-600"
+                />
+                <div className="flex justify-between">
+                  {[20, 40, 60, 80, 100].filter(v => v <= remaining).map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setPercentage(v)}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {v}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {error && <p className="text-sm text-destructive">{error}</p>}
+
+              <Button onClick={save} disabled={saving || !projectId} className="w-full">
+                {saving ? 'Saving…' : 'Save allocation'}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-center text-muted-foreground py-2">No capacity remaining this week.</p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import getDb from '@/lib/db';
-import { getLeaves } from '@/lib/factorial';
+import { getLeaves, getCompanyHolidays } from '@/lib/factorial';
 import { getLeaveDaysInWeek, formatWeek, parseWeek } from '@/lib/dates';
-import { addDays, format } from 'date-fns';
+import { addDays, format, parseISO, isWeekend } from 'date-fns';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   const db = getDb();
   const members = db.prepare('SELECT * FROM team_members ORDER BY name').all() as {
-    id: string; name: string; email: string; factorial_id: string | null;
+    id: string; name: string; email: string; factorial_id: string | null; location_id: string | null;
   }[];
 
   const allocations = db.prepare(`
@@ -23,12 +23,16 @@ export async function GET(req: Request) {
     percentage: number; project_name: string; project_color: string;
   }[];
 
-  // Only fetch leaves for members that have a factorial_id
   const factorialIds = members.map(m => m.factorial_id).filter(Boolean) as string[];
   const weekEndDate = format(addDays(parseWeek(to), 6), 'yyyy-MM-dd');
-  const { leaves } = await getLeaves(from, weekEndDate, factorialIds);
 
-  // Build map: factorial_id -> leaves
+  // Fetch personal leaves and national holidays in parallel
+  const [{ leaves }, { holidays }] = await Promise.all([
+    getLeaves(from, weekEndDate, factorialIds),
+    getCompanyHolidays(),
+  ]);
+
+  // Build map: factorial_id -> approved leaves
   const leaveMap: Record<string, typeof leaves> = {};
   for (const leave of leaves) {
     if (!leave.approved) continue;
@@ -37,7 +41,17 @@ export async function GET(req: Request) {
     leaveMap[key].push(leave);
   }
 
-  // Collect all weeks in range
+  // Build map: location_id -> holidays (only working days)
+  const holidayMap: Record<string, { date: string; name: string }[]> = {};
+  for (const h of holidays) {
+    if (!h.date) continue;
+    if (isWeekend(parseISO(h.date))) continue;
+    const locKey = String(h.location_id ?? 'global');
+    if (!holidayMap[locKey]) holidayMap[locKey] = [];
+    holidayMap[locKey].push({ date: h.date, name: h.summary });
+  }
+
+  // Collect all weeks
   const weeks: string[] = [];
   let cur = parseWeek(from);
   const end = parseWeek(to);
@@ -48,12 +62,13 @@ export async function GET(req: Request) {
 
   const result = members.map((m) => {
     const memberLeaves = m.factorial_id ? (leaveMap[m.factorial_id] ?? []) : [];
+    const memberHolidays = m.location_id ? (holidayMap[m.location_id] ?? []) : [];
 
     const weekData = weeks.map((week) => {
       const weekDate = parseWeek(week);
       const memberAllocs = allocations.filter((a) => a.member_id === m.id && a.week_start === week);
 
-      // Collect exact leave days (0=Mon … 4=Fri) for this week
+      // Personal leave days
       const leaveDaySet = new Set<number>();
       for (const leave of memberLeaves) {
         for (const d of getLeaveDaysInWeek(leave.start_on, leave.finish_on, weekDate)) {
@@ -62,17 +77,23 @@ export async function GET(req: Request) {
       }
       const leave_days = Array.from(leaveDaySet).sort();
 
-      const leavePct = leave_days.length * 20;
-      const allocatedPct = memberAllocs.reduce((sum, a) => sum + a.percentage, 0);
-      const availablePct = Math.max(0, 100 - leavePct - allocatedPct);
+      // National holiday days (skip days already counted as personal leave)
+      const holiday_days: { day: number; name: string }[] = [];
+      for (const h of memberHolidays) {
+        const days = getLeaveDaysInWeek(h.date, h.date, weekDate);
+        for (const d of days) {
+          if (!leaveDaySet.has(d)) {
+            holiday_days.push({ day: d, name: h.name });
+          }
+        }
+      }
+      holiday_days.sort((a, b) => a.day - b.day);
 
-      return {
-        week,
-        leave_days,
-        allocated_percentage: allocatedPct,
-        available_percentage: availablePct,
-        allocations: memberAllocs,
-      };
+      const offDays = leaveDaySet.size + holiday_days.length;
+      const allocatedPct = memberAllocs.reduce((sum, a) => sum + a.percentage, 0);
+      const availablePct = Math.max(0, 100 - offDays * 20 - allocatedPct);
+
+      return { week, leave_days, holiday_days, allocated_percentage: allocatedPct, available_percentage: availablePct, allocations: memberAllocs };
     });
 
     return { member: m, weeks: weekData };

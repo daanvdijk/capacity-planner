@@ -5,7 +5,7 @@ let db: Database.Database;
 
 function getDb(): Database.Database {
   if (!db) {
-    const dbPath = path.join(process.cwd(), 'data.db');
+    const dbPath = process.env.DB_PATH ?? path.join(process.cwd(), 'data.db');
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     initSchema(db);
@@ -27,8 +27,12 @@ function initSchema(db: Database.Database) {
       name TEXT NOT NULL,
       email TEXT,
       factorial_id TEXT UNIQUE,
+      location_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    -- migrate: add location_id if missing
+    CREATE TABLE IF NOT EXISTS _migrations (key TEXT PRIMARY KEY);
+    INSERT OR IGNORE INTO _migrations VALUES ('add_location_id');
 
     CREATE TABLE IF NOT EXISTS allocations (
       id TEXT PRIMARY KEY,

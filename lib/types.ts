@@ -10,6 +10,7 @@ export interface TeamMember {
   name: string;
   email: string | null;
   factorial_id: string | null;
+  location_id: string | null;
   created_at: string;
 }
 
@@ -25,8 +26,10 @@ export interface Allocation {
 
 export interface WeekData {
   week: string;
-  /** Day indices (0=Mon … 4=Fri) that are on leave */
+  /** Day indices (0=Mon … 4=Fri) that are personal time off */
   leave_days: number[];
+  /** Day indices (0=Mon … 4=Fri) that are national/public holidays */
+  holiday_days: { day: number; name: string }[];
   allocated_percentage: number;
   available_percentage: number;
   allocations: Allocation[];

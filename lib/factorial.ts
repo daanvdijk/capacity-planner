@@ -2,6 +2,7 @@ export interface FactorialEmployee {
   id: number;
   full_name: string;
   email: string;
+  location_id: number | null;
   team_ids: number[];
 }
 
@@ -12,6 +13,14 @@ export interface FactorialLeave {
   start_on: string;
   finish_on: string;
   approved: boolean;
+}
+
+export interface FactorialHoliday {
+  id: number;
+  location_id: number | null;
+  summary: string;
+  date: string;
+  half_day: string | null;
 }
 
 function getConfig() {
@@ -59,4 +68,15 @@ export async function getLeaves(from: string, to: string, factorialIds: string[]
   );
 
   return { leaves: results.flat() };
+}
+
+/** Fetch all company (national) holidays — one request, keyed by location_id. */
+export async function getCompanyHolidays(): Promise<{ holidays: FactorialHoliday[] }> {
+  const { base, key } = getConfig();
+  if (!key || key === 'your_factorial_api_key_here') return { holidays: [] };
+  const res = await fetch(`${base}/holidays/company_holidays`, { headers: headers(key), cache: 'no-store' });
+  if (!res.ok) return { holidays: [] };
+  const data = await res.json();
+  const holidays = Array.isArray(data) ? data : (data.data ?? []);
+  return { holidays };
 }
