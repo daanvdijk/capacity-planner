@@ -39,6 +39,7 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [weekWidth, setWeekWidth] = useState(600);
   const [editingProjectColor, setEditingProjectColor] = useState<string | null>(null);
+  const [copyingWeek, setCopyingWeek] = useState<string | null>(null);
 
   useEffect(() => {
     function measure() {
@@ -68,6 +69,20 @@ export default function Home() {
   }, [from, to]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function copyFromLastWeek(week: string) {
+    setCopyingWeek(week);
+    const res = await fetch('/api/allocations/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to_week: week }),
+    });
+    const data = await res.json();
+    if (!res.ok) alert(data.error ?? 'Copy failed');
+    else if (data.copied === 0) alert(data.message ?? 'Nothing to copy');
+    else load();
+    setCopyingWeek(null);
+  }
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -209,13 +224,21 @@ export default function Home() {
                 return (
                   <div
                     key={w.toISOString()}
-                    className="flex-shrink-0 px-3 flex items-center gap-2"
+                    className="flex-shrink-0 px-3 flex items-center gap-2 group/week"
                     style={{ width: weekWidth }}
                   >
                     <span className={`text-xs font-medium ${isCurrent ? 'text-violet-600' : 'text-muted-foreground'}`}>
                       {format(w, 'EEE MMM d')}
                     </span>
                     {isCurrent && <Badge className="text-xs bg-violet-100 text-violet-700 hover:bg-violet-100 px-1.5 py-0">Now</Badge>}
+                    <button
+                      onClick={() => copyFromLastWeek(formatWeek(w))}
+                      disabled={copyingWeek === formatWeek(w)}
+                      title="Copy allocations from previous week"
+                      className="opacity-0 group-hover/week:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-40 text-xs leading-none"
+                    >
+                      {copyingWeek === formatWeek(w) ? '…' : '⎘'}
+                    </button>
                   </div>
                 );
               })}
