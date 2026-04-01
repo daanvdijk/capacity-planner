@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import getDb from '@/lib/db';
+import { sql } from '@/lib/db';
 import { getEmployees } from '@/lib/factorial';
 
 export async function POST() {
-  const db = getDb();
+  const { rows: existing } = await sql`
+    SELECT factorial_id FROM team_members WHERE factorial_id IS NOT NULL
+  `;
 
-  // Only sync members already in the list that have a factorial_id
-  const existing = db.prepare('SELECT factorial_id FROM team_members WHERE factorial_id IS NOT NULL').all() as { factorial_id: string }[];
   if (existing.length === 0) {
     return NextResponse.json({ updated: 0, message: 'No linked members to sync' });
   }
@@ -17,17 +17,16 @@ export async function POST() {
   const empMap = new Map(employees.map(e => [String(e.id), e]));
   let updated = 0;
 
-  const syncMany = db.transaction(() => {
-    for (const { factorial_id } of existing) {
-      const emp = empMap.get(factorial_id);
-      if (!emp) continue;
-      db.prepare('UPDATE team_members SET name = ?, email = ?, location_id = ? WHERE factorial_id = ?').run(
-        emp.full_name, emp.email ?? null, emp.location_id ? String(emp.location_id) : null, factorial_id
-      );
-      updated++;
-    }
-  });
+  for (const { factorial_id } of existing) {
+    const emp = empMap.get(factorial_id);
+    if (!emp) continue;
+    await sql`
+      UPDATE team_members
+      SET name = ${emp.full_name}, email = ${emp.email ?? null}, location_id = ${emp.location_id ? String(emp.location_id) : null}
+      WHERE factorial_id = ${factorial_id}
+    `;
+    updated++;
+  }
 
-  syncMany();
   return NextResponse.json({ updated });
 }
